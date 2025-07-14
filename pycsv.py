@@ -110,6 +110,22 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
             debug(f"Processing op: {op}")
 
             if cmd == "use":
+                # --- use all ---
+                if len(args) == 1 and args[0] == "all":
+                    debug(f"Processing 'use all': adding all columns")
+                    for idx in range(len(col_names)):
+                        if idx not in operated_cols:
+                            operated_cols.append(idx)
+                    continue
+                # --- use 2-5 ---
+                if len(args) == 1 and re.match(r'^\d+-\d+$', args[0]):
+                    start, end = map(int, args[0].split('-'))
+                    debug(f"Processing 'use {start}-{end}': adding columns {start} through {end}")
+                    for idx in range(start, end + 1):
+                        if 0 <= idx < len(col_names) and idx not in operated_cols:
+                            operated_cols.append(idx)
+                    continue
+                # --- use @N or @"Name" ---
                 idx = parse_col(args[0], col_names)
                 if idx is None or idx not in col_idxs:
                     debug(f"Skipping op 'use' for missing column {args[0]}")
