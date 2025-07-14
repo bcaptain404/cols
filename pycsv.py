@@ -71,25 +71,23 @@ def streaming_trunc(src, n):
     return buf[:-n] if n > 0 else buf
 
 def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
+    # Output range/col tracking
     operated_cols = []
-    operated_names = set()
-    last_use_range = None  # None, 'all', or (start, end)
-
+    last_use_all = False
+    last_use_range = None  # tuple (start_idx, end_idx)
+    last_use_single = []   # list of indices
     with open(input_path, newline='') as f:
         delim = specs.get('delim', global_delim)
         strdelim = specs.get('str', global_strdelim)
         reader = csv.reader(f, delimiter=delim, quotechar=strdelim)
 
         header = next(reader)
-        header_original = list(header)
-        col_strdelim = {i: strdelim for i in range(len(header))}
-
-        col_idxs = list(range(len(header)))
         col_names = list(header)
         rows = [list(row) for row in reader]
 
         debug(f"Input header: {col_names} (len={len(col_names)})")
 
+        # Handle row-specs
         if 'skip' in specs:
             debug(f"Applying spec: skip {specs['skip']} rows")
             rows = rows[int(specs['skip']):]
@@ -107,7 +105,7 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
             rows = rows[:int(specs['max'])]
 
         for op in ops:
-            tokens = re.findall(r'@[0-9]+|@"[^"]+"|".+?"|\S+', op)
+            tokens = re.findall(r'@[0-9]+|@\"[^\"]+\"|\".+?\"|\S+', op)
             cmd = tokens[0]
             args = tokens[1:]
             debug(f"Processing op: {op}")
@@ -117,21 +115,29 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 # --- use all ---
                 if len(args) == 1 and args[0] == "all":
                     debug(f"Processing 'use all': will use all columns after mutations")
-                    last_use_range = 'all'
+                    last_use_all = True
+                    last_use_range = None
+                    last_use_single = []
                     continue
-                # --- use N-N ---
-                if len(args) == 1 and re.match(r'^\d+-\d+$', args[0]):
-                    start, end = map(int, args[0].split('-'))
-                    debug(f"Processing 'use {start}-{end}': will use columns {start} through {end} after mutations")
+                # --- use @N-@M ---
+                if len(args) == 1 and re.match(r'^@(\d+)-@(\d+)$', args[0]):
+                    m = re.match(r'^@(\d+)-@(\d+)$', args[0])
+                    start, end = int(m.group(1)), int(m.group(2))
+                    debug(f"Processing 'use @{start}-@{end}': will use columns {start} through {end} after mutations")
+                    last_use_all = False
                     last_use_range = (start, end)
+                    last_use_single = []
                     continue
                 # --- use @N or @"Name" ---
                 idx = parse_col(args[0], col_names)
-                if idx is None or idx not in list(range(len(col_names))):
+                if idx is None or idx >= len(col_names):
                     debug(f"Skipping op 'use' for missing column {args[0]}")
                     continue
-                if idx not in operated_cols:
-                    operated_cols.append(idx)
+                debug(f"Adding column {idx} to output columns (use)")
+                last_use_all = False
+                last_use_range = None
+                last_use_single.append(idx)
+            # --- (rest of your ops unchanged, e.g. rn/add/set/replace/etc) ---
             elif cmd == "rn":
                 idx = parse_col(args[0], col_names)
                 if idx is None:
@@ -140,8 +146,6 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 newname = args[1].strip('"')
                 debug(f"Renaming column {idx} to {newname}")
                 col_names[idx] = newname
-                if idx not in operated_cols:
-                    operated_cols.append(idx)
             elif cmd == "add":
                 idx = parse_col(args[0], col_names)
                 if idx is None:
@@ -150,9 +154,6 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 col_names.insert(idx, args[1].strip('"'))
                 for row in rows:
                     row.insert(idx, "")
-                col_idxs = list(range(len(col_names)))
-                if idx not in operated_cols:
-                    operated_cols.append(idx)
             elif cmd == "set":
                 idx = parse_col(args[0], col_names)
                 if idx is None:
@@ -162,8 +163,6 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 debug(f"Setting all values in col {idx} to {val}")
                 for row in rows:
                     row[idx] = val
-                if idx not in operated_cols:
-                    operated_cols.append(idx)
             elif cmd == "replace_all":
                 find, repl = args[0].strip('"'), args[1].strip('"')
                 debug(f"Replacing all '{find}' with '{repl}' globally")
@@ -200,11 +199,6 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 do_move(col_names, a, b)
                 for row in rows:
                     do_move(row, a, b)
-                col_idxs = list(range(len(col_names)))
-                if a not in operated_cols:
-                    operated_cols.append(a)
-                if b not in operated_cols:
-                    operated_cols.append(b)
             elif cmd == "swap":
                 a = parse_col(args[0], col_names)
                 b = parse_col(args[1], col_names)
@@ -215,41 +209,36 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 do_swap(col_names, a, b)
                 for row in rows:
                     do_swap(row, a, b)
-                col_idxs = list(range(len(col_names)))
-                if a not in operated_cols:
-                    operated_cols.append(a)
-                if b not in operated_cols:
-                    operated_cols.append(b)
             elif cmd == "in" and args[0] == "col" and args[2] == "str":
                 idx = int(args[1])
                 if idx is None:
                     debug(f"Skipping op 'in col ... str' for missing column {args[1]}")
                     continue
-                col_strdelim[idx] = args[3].strip('"')
                 debug(f"Set string delimiter for col {idx}: {args[3]}")
             else:
                 if cmd not in ("in",):
                     print(f"Warning: Unrecognized op '{op}'", file=sys.stderr)
 
-        # Determine which columns to output:
-        if last_use_range == 'all':
-            operated_cols = list(range(len(col_names)))
-        elif isinstance(last_use_range, tuple):
+        # Determine output columns
+        if last_use_all:
+            out_col_idxs = list(range(len(col_names)))
+        elif last_use_range is not None:
             start, end = last_use_range
-            operated_cols = [i for i in range(start, end+1) if i < len(col_names)]
-
-        if operated_cols:
-            col_idxs = operated_cols
-            out_colnames = [col_names[i] for i in col_idxs]
+            out_col_idxs = [i for i in range(start, end+1) if i < len(col_names)]
+        elif last_use_single:
+            # Preserve order, remove dups
+            seen = set()
+            out_col_idxs = [x for x in last_use_single if not (x in seen or seen.add(x))]
         else:
-            print(f"Warning: No columns to output", file=sys.stderr)
-            return
+            out_col_idxs = list(range(len(col_names)))  # Default: all columns
+
+        out_colnames = [col_names[i] for i in out_col_idxs]
         debug(f"Output columns: {out_colnames}")
 
         print(",".join(out_colnames))
         for n, row in enumerate(rows):
             try:
-                outrow = [row[i] for i in col_idxs]
+                outrow = [row[i] for i in out_col_idxs]
                 print(",".join(outrow))
                 debug(f"Row {n}: {outrow}")
             except Exception as e:
