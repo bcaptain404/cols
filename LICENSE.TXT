@@ -1,0 +1,9 @@
+Copyright (c) 2025 Brandon L Captain
+
+This software is provided for personal, educational, and non-commercial use only.
+You may view, modify, and distribute the source code, provided this notice is retained.
+
+Commercial use, redistribution in paid products, or integration into revenue-generating services requires a separate license and written permission from the author.
+
+The author reserves the right to change the licensing terms at any time for future versions.
+
