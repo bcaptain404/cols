@@ -73,6 +73,7 @@ def streaming_trunc(src, n):
 def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
     operated_cols = []
     operated_names = set()
+    last_use_range = None  # None, 'all', or (start, end)
 
     with open(input_path, newline='') as f:
         delim = specs.get('delim', global_delim)
@@ -86,6 +87,8 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
         col_idxs = list(range(len(header)))
         col_names = list(header)
         rows = [list(row) for row in reader]
+
+        debug(f"Input header: {col_names} (len={len(col_names)})")
 
         if 'skip' in specs:
             debug(f"Applying spec: skip {specs['skip']} rows")
@@ -108,26 +111,23 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
             cmd = tokens[0]
             args = tokens[1:]
             debug(f"Processing op: {op}")
+            debug(f"Current col_names before '{op}': {col_names}")
 
             if cmd == "use":
                 # --- use all ---
                 if len(args) == 1 and args[0] == "all":
-                    debug(f"Processing 'use all': adding all columns")
-                    for idx in range(len(col_names)):
-                        if idx not in operated_cols:
-                            operated_cols.append(idx)
+                    debug(f"Processing 'use all': will use all columns after mutations")
+                    last_use_range = 'all'
                     continue
-                # --- use 2-5 ---
+                # --- use N-N ---
                 if len(args) == 1 and re.match(r'^\d+-\d+$', args[0]):
                     start, end = map(int, args[0].split('-'))
-                    debug(f"Processing 'use {start}-{end}': adding columns {start} through {end}")
-                    for idx in range(start, end + 1):
-                        if 0 <= idx < len(col_names) and idx not in operated_cols:
-                            operated_cols.append(idx)
+                    debug(f"Processing 'use {start}-{end}': will use columns {start} through {end} after mutations")
+                    last_use_range = (start, end)
                     continue
                 # --- use @N or @"Name" ---
                 idx = parse_col(args[0], col_names)
-                if idx is None or idx not in col_idxs:
+                if idx is None or idx not in list(range(len(col_names))):
                     debug(f"Skipping op 'use' for missing column {args[0]}")
                     continue
                 if idx not in operated_cols:
@@ -231,7 +231,13 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 if cmd not in ("in",):
                     print(f"Warning: Unrecognized op '{op}'", file=sys.stderr)
 
-        # Finalize output columns: only those explicitly operated on, in the order used
+        # Determine which columns to output:
+        if last_use_range == 'all':
+            operated_cols = list(range(len(col_names)))
+        elif isinstance(last_use_range, tuple):
+            start, end = last_use_range
+            operated_cols = [i for i in range(start, end+1) if i < len(col_names)]
+
         if operated_cols:
             col_idxs = operated_cols
             out_colnames = [col_names[i] for i in col_idxs]
