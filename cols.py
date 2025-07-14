@@ -17,6 +17,76 @@ import argparse
 import sys
 import re
 
+def print_conf_help():
+    print("""
+coLS Config Help
+================
+
+Config files contain line-by-line instructions for processing CSV/tabular data.
+
+Supported spec lines (must start with 'in '):
+    in head N      # Process only the first N rows (excluding header)
+    in tail N      # Process only the last N rows
+    in skip N      # Skip the first N rows
+    in trunc N     # Skip the last N rows
+    in max N       # Process at most N rows
+    in delim ,     # Set input delimiter (default: ',')
+    in str "       # Set string delimiter (default: '"')
+
+Supported operations:
+    use @N                 # Output column at index N (zero-based)
+    use @"Name"            # Output column by header name
+    use all                # Output all columns
+    use @N-@M              # Output columns N through M (inclusive)
+    rn @N "New"            # Rename column N to "New"
+    rn @"Old" "New"        # Rename column named Old to New
+    add @N "NewCol"        # Insert a new column at position N
+    set @N X               # Set all values in column N to X
+    set @"Name" X          # Set all values in column "Name" to X
+    replace_all A B        # Replace all occurrences of A with B everywhere
+    replace_head A B       # Replace all in header names
+    replace_cell A B       # Replace all in cell data
+    replace @N A B         # Replace all in column N
+    move @A @B             # Move column A to position B
+    swap @A @B             # Swap columns A and B
+    # Lines beginning with '#' are comments
+
+See README.md for more examples.
+""")
+
+def print_sample_conf():
+    print("""# coLS sample.conf - All features with inline explanations
+
+# ---- Spec lines: set file handling options ----
+
+in delim ,      # Set the CSV delimiter to comma (default)
+in str "        # Set string delimiter to double quote (default)
+in head 100     # Process only the first 100 rows (excluding header)
+in tail 50      # Process only the last 50 rows
+in skip 2       # Skip the first 2 rows of input (after header)
+in trunc 1      # Skip the last row of input
+in max 20       # Process at most 20 input rows
+
+# ---- Column operations ----
+
+rn @0 "ID"                      # Rename column 0 to "ID"
+rn @"First Name" "Name"         # Rename column "First Name" to "Name"
+add @2 "Notes"                  # Add a new column named "Notes" at position 2
+set @1 "Processed"              # Set every cell in column 1 to "Processed"
+use @"ID"                       # Use the column named "ID" in the output
+use @"Name"                     # Use the column named "Name" in the output
+use @2-@4                       # Use columns 2 through 4 (inclusive) in the output
+use all                         # Use all columns (overrides other use statements)
+replace_all "$" ""              # Remove all dollar signs from all cells and headers
+replace_head "foo" "bar"        # Replace "foo" with "bar" in column headers
+replace_cell "abc" "XYZ"        # Replace "abc" with "XYZ" in all cell data
+replace @"Notes" "none" "added" # Replace "none" with "added" in the "Notes" column
+move @0 @2                      # Move column 0 to position 2 (after other ops)
+swap @1 @2                      # Swap columns 1 and 2
+# Lines beginning with '#' are comments and are ignored by coLS
+
+""")
+
 def debug(msg):
     if DEBUG:
         print(f"[DEBUG] {msg}", file=sys.stderr)
@@ -122,7 +192,7 @@ def process_csv(input_path, specs, ops, filenum, global_delim=',', global_strdel
             args = tokens[1:]
             debug(f"Processing op: {op}")
             debug(f"Current col_names before '{op}': {col_names}")
-
+ 
             if cmd == "use":
                 # --- use all ---
                 if len(args) == 1 and args[0] == "all":
@@ -260,15 +330,30 @@ def process_csv(input_path, specs, ops, filenum, global_delim=',', global_strdel
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", required=True)
+    parser.add_argument("--help-conf", action="store_true", help="Show config file help and exit")
+    parser.add_argument("--gen-sample", action="store_true", help="Output sample.conf and exit")
+    parser.add_argument("-c", "--config", help="Config file")
     parser.add_argument("--debug", action="store_true", help="Print debug info to stderr")
-    parser.add_argument("inputs", nargs="+")
+    parser.add_argument("inputs", nargs="*")
     args = parser.parse_args()
+
+    # Handle help-conf and gen-sample right away
+    if args.help_conf:
+        print_conf_help()
+        sys.exit(0)
+    if args.gen_sample:
+        print_sample_conf()
+        sys.exit(0)
+
+    # Only *now* check for required config
+    if not args.config:
+        parser.error("the following arguments are required: -c/--config")
 
     global DEBUG
     DEBUG = args.debug
 
     specs, ops = parse_config(args.config)
+
     delim = specs.get("delim", ",")
     strdelim = specs.get("str", '"')
 
@@ -277,3 +362,4 @@ if __name__ == "__main__":
         debug(f"Processing input #{filenum}: {csvfile}")
         process_csv(csvfile, specs, ops, filenum, global_delim=delim, global_strdelim=strdelim)
         filenum += 1
+
