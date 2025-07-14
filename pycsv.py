@@ -66,6 +66,9 @@ def streaming_trunc(src, n):
     return buf[:-n] if n > 0 else buf
 
 def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
+    operated_cols = []  # list of indices, in output order
+    operated_names = set()  # avoid dupes by name
+
     with open(input_path, newline='') as f:
         delim = specs.get('delim', global_delim)
         strdelim = specs.get('str', global_strdelim)
@@ -99,18 +102,22 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
             tokens = re.findall(r'@[0-9]+|@"[^"]+"|".+?"|\S+', op)
             cmd = tokens[0]
             args = tokens[1:]
-
             if cmd == "use":
                 idx = parse_col(args[0], col_names)
                 if idx is None or idx not in col_idxs:
-                    continue  # skip if missing
-                col_idxs = [i for i in col_idxs if i == idx] + [i for i in col_idxs if i != idx]
+                    continue
+                if idx not in col_idxs:
+                    col_idxs.append(idx)
+                if idx not in operated_cols:
+                    operated_cols.append(idx)
             elif cmd == "rn":
                 idx = parse_col(args[0], col_names)
                 if idx is None:
                     continue
                 newname = args[1].strip('"')
                 col_names[idx] = newname
+                if idx not in operated_cols:
+                    operated_cols.append(idx)
             elif cmd == "add":
                 idx = parse_col(args[0], col_names)
                 if idx is None:
@@ -119,6 +126,8 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 for row in rows:
                     row.insert(idx, "")
                 col_idxs = list(range(len(col_names)))
+                if idx not in operated_cols:
+                    operated_cols.append(idx)
             elif cmd == "set":
                 idx = parse_col(args[0], col_names)
                 if idx is None:
@@ -126,6 +135,8 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 val = args[1].strip('"')
                 for row in rows:
                     row[idx] = val
+                if idx not in operated_cols:
+                    operated_cols.append(idx)
             elif cmd == "replace_all":
                 find, repl = args[0].strip('"'), args[1].strip('"')
                 col_names = [do_replace(x, find, repl) for x in col_names]
@@ -156,6 +167,10 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 for row in rows:
                     do_move(row, a, b)
                 col_idxs = list(range(len(col_names)))
+                if a not in operated_cols:
+                    operated_cols.append(a)
+                if b not in operated_cols:
+                    operated_cols.append(b)
             elif cmd == "swap":
                 a = parse_col(args[0], col_names)
                 b = parse_col(args[1], col_names)
@@ -165,6 +180,10 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 for row in rows:
                     do_swap(row, a, b)
                 col_idxs = list(range(len(col_names)))
+                if a not in operated_cols:
+                    operated_cols.append(a)
+                if b not in operated_cols:
+                    operated_cols.append(b)
             elif cmd == "in" and args[0] == "col" and args[2] == "str":
                 idx = int(args[1])
                 if idx is None:
@@ -174,11 +193,18 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                 if cmd not in ("in",):
                     print(f"Warning: Unrecognized op '{op}'", file=sys.stderr)
 
-        out_colnames = [col_names[i] for i in col_idxs]
+        # Finalize output columns: only those explicitly operated on, in the order used
+        if operated_cols:
+            col_idxs = operated_cols  # <--- This is the spot!
+            out_colnames = [col_names[i] for i in col_idxs]
+        else:
+            print(f"Warning: No columns to output", file=sys.stderr)
+            return
         print(",".join(out_colnames))
         for row in rows:
             outrow = [row[i] for i in col_idxs]
             print(",".join(outrow))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
