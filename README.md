@@ -6,7 +6,17 @@ Transform, filter, rename, merge, and process spreadsheet data with simple, scri
 
 ---
 
+## Example Usage
+
+```sh
+$ cols.py -c config.cong input1.csv input2.csv
+```
+
+---
+
 ## Features
+
+Put these in your config. The order in which they are found is the order in which they are executed per-line. Files are processed fully one-at-a-time.
 
 - Select columns by name or position for output (`use @N`, `use @"ColName"`, `use all`, `use @N-@M`)
 - Rename columns by name or position (`rn @N "NewName"`, `rn @"Old" "New"`)
@@ -22,7 +32,3 @@ Transform, filter, rename, merge, and process spreadsheet data with simple, scri
 
 ---
 
-## Example Usage
-
-```sh
-$ cols.py -c config.cfg input1.csv input2.csv
