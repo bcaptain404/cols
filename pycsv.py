@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
 
+#todo: need to be able to specify an output delimiter
+#todo: if a previous input has a used & named column, and subsequent inputs have the same named column at a different position, swap/re-arrange so that they concatenate to the same column in output.
+#todo: - if the subseuent output has multiple colunmns with that name, just pick the first to re-arrange.
+#todo: - if both files have multiple columns named the same, pair the second file's first with the first file's first, second files second with the first file's second.
+#todo: - etc
+#todo: allow single quotes as well as double quotes, for strings.
+#todo: if @"Status" == "Settled" # only prints row if "Status" column's value at that row is "Settled"
+#todo: let @"Sum" = @"Price" + @"Tax" # add/subtract/etc and assign cell data
+#todo: if @"Price" < 0 insert # insert blank row if current row at this column < 0
+#todo: if @"Price" < 0 duplicate # duplicate this row row if current row at this column < 0 ( don't execute for rows that are duplicates, as this would yield an infinite loop)
+#todo: warn if column not found
+
 import csv
 import argparse
 import sys
