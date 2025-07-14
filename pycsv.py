@@ -70,7 +70,7 @@ def streaming_trunc(src, n):
         buf.append(row)
     return buf[:-n] if n > 0 else buf
 
-def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
+def process_csv(input_path, specs, ops, filenum, global_delim=',', global_strdelim='"'):
     # Output range/col tracking
     operated_cols = []
     last_use_all = False
@@ -120,7 +120,8 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
                     last_use_single = []
                     continue
                 # --- use @N-@M ---
-                if len(args) == 1 and re.match(r'^@(\d+)-@(\d+)$', args[0]):
+                # TODO: Not functional yet
+                if len(args) == 1 and re.match(r'^@(\d+)-(?:@)?(\d+)$', args[0]):
                     m = re.match(r'^@(\d+)-@(\d+)$', args[0])
                     start, end = int(m.group(1)), int(m.group(2))
                     debug(f"Processing 'use @{start}-@{end}': will use columns {start} through {end} after mutations")
@@ -235,7 +236,8 @@ def process_csv(input_path, specs, ops, global_delim=',', global_strdelim='"'):
         out_colnames = [col_names[i] for i in out_col_idxs]
         debug(f"Output columns: {out_colnames}")
 
-        print(",".join(out_colnames))
+        if filenum == 0:
+            print(",".join(out_colnames))
         for n, row in enumerate(rows):
             try:
                 outrow = [row[i] for i in out_col_idxs]
@@ -258,6 +260,8 @@ if __name__ == "__main__":
     delim = specs.get("delim", ",")
     strdelim = specs.get("str", '"')
 
+    filenum = 0
     for csvfile in args.inputs:
-        debug(f"Processing input: {csvfile}")
-        process_csv(csvfile, specs, ops, global_delim=delim, global_strdelim=strdelim)
+        debug(f"Processing input #{filenum}: {csvfile}")
+        process_csv(csvfile, specs, ops, filenum, global_delim=delim, global_strdelim=strdelim)
+        filenum += 1
