@@ -1,0 +1,51 @@
+New project: csv.sh
+
+synopsis:
+- processes CSV files containing an arbitrary number of rows/cols, to stdout as a new CSV, based on a config file which describes how to process the data (eg, `$0 -c [config_file] [input files...]`).
+- The script operates line-by-line on input data (does not read whole files into memory).
+- The script operates on data in-place, meaning if my column names are A,B,C,D,E,F and I move column 1 to column 2, and then move column 1 to column 5, I wind up with A,B,D,E,C,F
+
+terms:
+- header: the first line of a CSV input (the line that indicates the column names).
+- row: a non-header row.
+
+behavior:
+- only columns which are mentioned in cfg will be printed.
+- config contains ops (operations) and specs (input csv-format specs).
+- ops and specs can specify columns either by name or position (counting from zero).
+- Multiple inputs are processed one-at-a-time
+- only a single header is printed (selecting the first-found column name for each column)
+- specs and ops affect all inputs (eg, a line telling the script to move a column from one pos to another will be executed for all inputs)
+- If inputs conflict in either quantity and/or names of columns, it's the responsibility of the user to write a config file that produces intelligible output.
+- bash-style comments (with #).
+
+multiple operations may operate on the same column, and will be executed in-order. Eg, if we write 'use col 3' and 'rename col Foo to Bar', and Foo happens to be column 3 for an input, it will rename it to Bar and output it only once (as column 3). If instead two inputs have Foo at different column positions, they'll both be renamed to Bar and output at their independent positions.
+
+specs:
+- in header 1 # the input header is 1 row
+- in head 5 # process only the first 5 input rows (again, not including the header)
+- in tail 7 # process only the last 7 input rows.
+- in skip 3 # skip the first three input rows (not including the header)
+- in trunc 8 # skip the last 8 rows of input
+- in max 50 # process at most 50 input rows
+- in delim , # cell delimiter for all input is a comma
+- in delim "," # ditto
+- in str NONE # no string delimiter in any column (treat quotes literally; as cell data)
+- in str @ # string delimiter for all input is @ (string delim is double-quote by default)
+- in str "@" # ditto
+- in col 5 str % # override string delimiter for only column 5 as a percent sign
+
+ops:
+- use @3 # flag col 3 to be printed
+- rn @5 "Description" # renames column 5 to "Description"
+- rn @"Desc" "Description" # rename any column named Desc to Description
+- add @5 "merp" # insert a column at position 5 named "merp" (shift the others to the right, thereby changing their column position in the output)
+- set @5 100 # all cells in col 5 will be printed as the value 100
+- set @"Desc" "NULL" # all cells in any column named "Desc" will be printed as the word "NULL"
+- replace_all "$" "" # removes dollar signs globally (cells, headers, everything)
+- replace_head "foo" "bar" # replace all occurrences of foo with bar (in headers)
+- replace_cell "foo" "bar" # replace all occurrences of foo with bar (in all cell data)
+- replace @"Desc" "foo" "bar" # replace all occurrences of foo with bar in all cell data (in column named "Desc")
+- replace @5 "foo" "bar" # replace all occurrences of foo with bar in the cell data of column 5.
+- move @1 @3 # eg, columns A,B,C,D,E becomes A,C,D,B,E
+- swap @1 @3 # eg, columns A,B,C,D,E becomes A,D,C,B,E
